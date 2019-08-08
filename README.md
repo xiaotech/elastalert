@@ -304,3 +304,25 @@ ElastAlert is licensed under the Apache License, Version 2.0: http://www.apache.
 ### Read the documentation at [Read the Docs](http://elastalert.readthedocs.org).
 
 ### Questions? Drop by #elastalert on Freenode IRC.
+
+
+
+
+### alertmanager configuration ###
+
+支持参数的变量化，具体值对应es的feild
+
+```
+alert:
+  - alerts.AlertmanagerAlerter
+
+alertmanager_host: http://10.211.55.4:9093
+alertmanager_alertname: "{rulename}"
+alertmanager_labels: {"severity":"error","id":"{id}","instance":"{name}"}
+alertmanager_annotations: {"description":"{message}"}
+alertmanager_timeout: 20
+```
+
+
+
+

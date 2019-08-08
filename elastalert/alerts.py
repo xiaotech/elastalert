@@ -2173,3 +2173,80 @@ class HiveAlerter(Alerter):
             'type': 'hivealerter',
             'hive_host': self.rule.get('hive_connection', {}).get('hive_host', '')
         }
+
+
+
+class AlertmanagerAlerter(Alerter):
+    """ Sends an alert to Alertmanager """
+
+    required_options = frozenset({'alertmanager_host'})
+
+    def __init__(self, rule):
+        super(AlertmanagerAlerter, self).__init__(rule)
+        self.url = '{}/api/v1/alerts'.format(self.rule['alertmanager_host'])
+        self.alertname = self.rule.get('alertmanager_alertname', self.rule['name'])
+        self.labels = self.rule.get('alertmanager_labels', dict())
+        self.annotations = self.rule.get('alertmanager_annotations', dict())
+        self.fields = self.rule.get('alertmanager_fields', dict())
+        self.title_labelname = self.rule.get('alertmanager_alert_subject_labelname', 'summary')
+        self.body_labelname = self.rule.get('alertmanager_alert_text_labelname', 'description')
+        self.proxies = {'https': self.rule.get('alertmanager_proxy')} if self.rule.get('alertmanager_proxy') else None
+        self.verify_ssl = self.rule.get('alertmanager_verify_ssl', True)
+        self.missing_text = self.rule.get('alertmanager_missing_value', '<MISSING VALUE>')
+        self.timeout = self.rule.get('alertmanager_timeout',86400)
+
+    def _json_or_string(self, obj):
+        """helper to encode non-string objects to JSON"""
+        if isinstance(obj, basestring):
+            return obj
+        return json.dumps(obj, cls=DateTimeEncoder)
+
+    def get_custom_string(self,ddict,match):
+        payload = {}
+        for k ,v in ddict.items():
+            payload[k] = resolve_string(ddict[k],match,self.missing_text)
+        return payload
+
+    def alert(self, matches):
+        self.labels.update({
+            label: self._json_or_string(lookup_es_key(matches[0], term))
+            for label, term in self.fields.iteritems()})
+        self.labels.update(
+            alertname=self.alertname,
+            elastalert_rule=self.rule['name'])
+#        self.annotations.update({
+#            self.title_labelname: self.create_title(matches),
+#            self.body_labelname: self.create_alert_body(matches)})
+
+        # for custom  labels and annotations
+        self.labels = self.get_custom_string(self.labels,matches[0])
+        self.annotations = self.get_custom_string(self.annotations,matches[0])
+
+        # add timeout for alertmanager
+        start_time = datetime.datetime.now()-datetime.timedelta(hours=8)
+        end_time = (start_time + datetime.timedelta(seconds=self.timeout))
+        elastalert_logger.info(self.timeout)
+
+        payload = json.dumps([{
+            'annotations': self.annotations,
+            'labels': self.labels,
+            'startsAt':"{}".format(start_time.strftime("%Y-%m-%dT%H:%M:%S.00Z")),
+            'endsAt':"{}".format(end_time.strftime("%Y-%m-%dT%H:%M:%S.00Z"))}], cls=DateTimeEncoder)
+        elastalert_logger.info(payload)
+        try:
+            if not self.verify_ssl:
+                requests.packages.urllib3.disable_warnings()
+            response = requests.post(
+                self.url,
+                data=payload,
+                headers={'content-type': 'application/json'},
+                verify=self.verify_ssl,
+                proxies=self.proxies,
+            )
+            response.raise_for_status()
+        except RequestException as e:
+            raise EAException("Error posting to Alertmanager: %s" % e)
+        elastalert_logger.info("Alert sent to Alertmanager")
+
+    def get_info(self):
+        return {'type': 'alertmanager'}
