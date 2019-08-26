@@ -325,4 +325,17 @@ alertmanager_timeout: 20
 
 
 
-
+## 关于es时间设置:
+(1)首先查看index _mapping
+如下格式： 
+‘’‘
+"timestamp" : {
+            "type" : "date",
+            "format" : "yyyy-MM-dd HH:mm:ss.SSS"
+          }
+’‘’
+(2) elastalert如下格式匹配
+timestamp_field: timestamp
+timestamp_type: custom
+timestamp_format: "%Y-%m-%d %H:%M:%S.%f"
+timestamp_format_expr: 'ts[:23]'
